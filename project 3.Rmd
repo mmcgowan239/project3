@@ -1,0 +1,108 @@
+---
+title: "Project 3"
+output:
+  html_document:
+    df_print: paged
+---
+
+Initial setup (add cleaning / tidying if necessary)
+```{r}
+library(openintro)
+library(tidyverse)
+library(janitor)
+library(randomForest)
+library(rpart)
+library(partykit)
+library(caret)
+
+mlbBat10 <- na.omit(mlbBat10)
+mlbBat10 <- mlbBat10[2:19]
+
+mlbBat10 <- mlbBat10 %>%
+  mutate(OPS = OBP + SLG) %>%
+  clean_names()
+
+head(mlbBat10)
+summary(mlbBat10)
+```
+Split data into training and test data.
+
+```{r}
+set.seed(8675309) 
+train_index <- createDataPartition(mlbBat10$hr, p = .9, list = FALSE)   # caret functions
+
+  train_data <- mlbBat10[train_index,]   # Training Data
+  test_data <- mlbBat10[-train_index,]  # Test Data
+  
+  head(train_data)
+  head(test_data)
+```
+
+**CART**
+The summary indicates that two variables were used in tree construction (rbi and slg). At this point, CART has deliberately overfit and used validation to prune back.
+```{r}
+set.seed(8675309) 
+hr.ct <- rpart(hr ~ ., data = train_data)
+printcp(hr.ct)
+plotcp(hr.ct)
+summary(hr.ct)
+
+hr.ct.party <- as.party(hr.ct)
+plot(hr.ct.party)
+```
+Generate predictions for our hold-out testing data and compare to actual with a plot and correlation
+```{r}
+predictions.ct <- predict(hr.ct, test_data)
+plot(predictions.ct,test_data$hr)    # compare to actual value
+abline(0,1)
+cor(predictions.ct,test_data$hr)
+mean((predictions.ct - test_data$hr)^2)
+```
+Results indicate that there is a high correlation between the predictions and the test home run data at 0.911. The test set MSE associated with the regression tree is 8.592. The square root of the MSE is therefore about 2.93, indicating this model leads to test predictions within around 2.93 home runs of the true median home runs from the data set.
+
+**Bagging**
+
+Results indicate that across all trees considered in the bagged model, rbi's (rbi) and slugging percentage (slg) are by far the two most important variables.
+```{r}
+   set.seed(8675309)
+   hr.bg <- randomForest(hr ~ ., data = train_data, mtry = ncol(mlbBat10)-1, importance = TRUE, na.action = na.omit)
+   print(hr.bg)
+   round(importance(hr.bg), 2)   # Variable Importances
+   varImpPlot(hr.bg)
+```
+Generate predictions for our hold-out testing data and compare to actual with a plot and correlation
+
+```{r}
+predictions.bg <- predict(hr.bg, test_data)
+plot(predictions.bg,test_data$hr)    # compare to actual value
+abline(0,1)
+cor(predictions.bg,test_data$hr)
+mean((predictions.bg - test_data$hr)^2)
+```
+Results indicate that correlation improved for the bagged model compared to CART (0.943 vs. 0.911). The test set MSE associated with the bagged model is 5.812. The square root of the MSE is therefore about 2.28, indicating this model leads to test predictions within around 2.28 home runs of the true median home runs from the data set (an improvement compared to CART).
+
+**Random Forest**
+Note: Default values of mtry = sqrt(p) Classification
+                             = p/3     Regression
+where p is number of explanitory variables
+
+Results indicate that across all trees considered in the random forest, rbi's (rbi), total bases (tb) and slugging percentage (slg) are the most important variables.
+```{r}
+   set.seed(8675309)
+   hr.rf <- randomForest(hr ~ ., data = train_data, mtry = 6, importance = TRUE, na.action = na.omit)
+   print(hr.rf)
+   round(importance(hr.rf), 2)   # Variable Importances
+   varImpPlot(hr.rf)
+   plot(hr.rf)
+```
+Generate predictions for our hold-out testing data and compare to actual with a plot and correlation
+```{r}
+predictions.rf <- predict(hr.rf, test_data)
+plot(predictions.rf,test_data$hr)    # compare to actual value
+abline(0,1)
+cor(predictions.rf,test_data$hr)
+mean((predictions.rf - test_data$hr)^2)
+```
+Results indicate that correlation improved for the regression tree model compared to the bagged model (0.960 vs. 0.943). The test set MSE associated with the bagged model is 4.293. The square root of the MSE is therefore about 2.07, indicating this model leads to test predictions within around 2.07 home runs of the true median home runs from the data set (an improvement compared to both CART and the bagged model).
+
+While all models show strong correlation and accurate prediction, these findings indicate Random Forest predicted most accurately and should be used moving forward as the model of choice for any further study of the data set. 
